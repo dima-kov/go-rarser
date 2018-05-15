@@ -121,18 +121,18 @@ func (p requestParser) parseBody(r *http.Request, field *reflect.Value) error {
 
 // Sets value to field converting value to field type
 func (p requestParser) setValue(field *reflect.Value, value string) error {
-	switch field.Type().String() {
-	case "string":
+	switch field.Kind() {
+	case reflect.String:
 		field.SetString(value)
-	case "int":
+	case reflect.Int:
 		return p.convertAndSetInt(value, field)
-	case "uint":
+	case reflect.Uint:
 		return p.convertAndSetUint(value, field)
-	case "float64":
+	case reflect.Float64:
 		return p.convertAndSetFloat(value, field)
-	case "time.Time":
+	case reflect.TypeOf(time.Time{}).Kind():
 		return p.convertAndSetTime(value, field)
-	case "bool":
+	case reflect.Bool:
 		return p.convertAndSetBool(value, field)
 	}
 	return nil
