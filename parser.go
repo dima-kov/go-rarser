@@ -1,41 +1,35 @@
 package rarser
 
 import (
-	"reflect"
-	"sync"
-	"goji.io/pat"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/ioutil"
+	"github.com/dima-kov/go-rarser/body"
+	"github.com/dima-kov/go-rarser/get"
+	"github.com/dima-kov/go-rarser/path"
+	"github.com/dima-kov/go-rarser/vars"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const TagUrl = "url"
-const TagBody = "body"
-const TagGet = "get"
-const TagDefault = "default"
-
 type RequestParser interface {
 	Parse(r *http.Request, parseTo interface{}) error
 }
 
-type requestParser struct{}
-
-var instance *requestParser
-var once sync.Once
+type requestParser struct {
+	pathParser path.Parser
+	getParser  get.Parser
+	bodyParser body.Parser
+}
 
 type structValueField struct {
 	valueField  *reflect.Value
 	structField *reflect.StructField
 }
 
-func (p requestParser) Parse(r *http.Request, parseTo interface{}) error {
-	fields := p.getFields(reflect.ValueOf(parseTo).Elem())
-	for _, field := range fields {
+func (p requestParser) Parse(r *http.Request, parseInto interface{}) error {
+	parseIntoFields := p.getFields(reflect.ValueOf(parseInto).Elem())
+	for _, field := range parseIntoFields {
 		if err := p.parseStructField(r, field.valueField, field.structField); err != nil {
 			return err
 		}
@@ -69,17 +63,17 @@ func getTagType(tag reflect.StructTag) string {
 
 func (p requestParser) parseStructField(r *http.Request, field *reflect.Value, structField *reflect.StructField) error {
 	switch getTagType(structField.Tag) {
-	case TagUrl:
+	case vars.TagPath:
 		err := p.parseFieldFromUrl(r, field, structField)
 		if err != nil {
 			return err
 		}
-	case TagGet:
+	case vars.TagGet:
 		err := p.parseFieldFromGet(r, field, structField)
 		if err != nil {
 			return err
 		}
-	case TagBody:
+	case vars.TagBody:
 		err := p.parseBody(r, field)
 		if err != nil {
 			return err
@@ -89,34 +83,20 @@ func (p requestParser) parseStructField(r *http.Request, field *reflect.Value, s
 }
 
 func (p requestParser) parseFieldFromUrl(r *http.Request, field *reflect.Value, structField *reflect.StructField) error {
-	paramValue := pat.Param(r, structField.Tag.Get(TagUrl))
-	return p.setValue(field, paramValue)
+	return p.setValue(field, p.pathParser.ParsePath(r, structField))
 }
 
 func (p requestParser) parseFieldFromGet(r *http.Request, field *reflect.Value, structField *reflect.StructField) error {
-	paramValue := r.URL.Query().Get(structField.Tag.Get(TagGet))
-	if paramValue != "" {
-		return p.setValue(field, paramValue)
-	}
-	defaultValue, ok := structField.Tag.Lookup(TagDefault)
-	if !ok {
-		return errors.New(
-			fmt.Sprintf("empty required GET param: %s", structField.Tag.Get(TagGet)),
-		)
-	}
-	return p.setValue(field, defaultValue)
-}
-
-func (p requestParser) parseBody(r *http.Request, field *reflect.Value) error {
-	b, err := ioutil.ReadAll(r.Body)
-	defer r.Body.Close()
+	value, err := p.getParser.ParseGET(r, structField)
 	if err != nil {
 		return err
 	}
-	newValue := reflect.New(field.Type())
-	err = json.Unmarshal(b, newValue.Interface())
-	field.Set(newValue.Elem())
-	return err
+	return p.setValue(field, value)
+}
+
+func (p requestParser) parseBody(r *http.Request, field *reflect.Value) error {
+	return p.bodyParser.ParseBody(r, field)
+
 }
 
 // Sets value to field converting value to field type
