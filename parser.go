@@ -14,17 +14,24 @@ import (
 
 type RequestParser interface {
 	Parse(r *http.Request, parseTo interface{}) error
+
+	setGetParser(get.Parser)
+	setPathParser(path.Parser)
+	setBodyParser(body.Parser)
 }
 
 type requestParser struct {
 	pathParser path.Parser
-	getParser  get.Parser
 	bodyParser body.Parser
+	getParser  get.Parser
 }
 
-type structValueField struct {
-	valueField  *reflect.Value
-	structField *reflect.StructField
+func newRequestParser(pathParser path.Parser, bodyParser body.Parser, getParser get.Parser) RequestParser {
+	return &requestParser{
+		pathParser: pathParser,
+		bodyParser: bodyParser,
+		getParser:  getParser,
+	}
 }
 
 func (p requestParser) Parse(r *http.Request, parseInto interface{}) error {
@@ -35,6 +42,23 @@ func (p requestParser) Parse(r *http.Request, parseInto interface{}) error {
 		}
 	}
 	return nil
+}
+
+func (p *requestParser) setGetParser(parser get.Parser) {
+	p.getParser = parser
+}
+
+func (p *requestParser) setPathParser(parser path.Parser) {
+	p.pathParser = parser
+}
+
+func (p *requestParser) setBodyParser(parser body.Parser) {
+	p.bodyParser = parser
+}
+
+type structValueField struct {
+	valueField  *reflect.Value
+	structField *reflect.StructField
 }
 
 // Returns fields of struct passed as (reflect.ValueOf(structObj))
